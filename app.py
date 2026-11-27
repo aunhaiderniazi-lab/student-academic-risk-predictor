@@ -77,9 +77,9 @@ def make_data():
 
 
 @st.cache_resource
-def train(_df):
+def train(df):
     """Compare both models with cross-validation, then test the winner."""
-    X, y = _df.drop(columns=["passed"]), _df["passed"]
+    X, y = df.drop(columns=["passed"]), df["passed"]
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
