@@ -1,18 +1,23 @@
 """
 Student Academic Risk Predictor
-Made by Aun Haider Niazi - Intro to Data Science Lab (IET 3082), FUSST
+-------------------------------
+Made by Aun Haider Niazi
+Intro to Data Science Lab (IET 3082), FUSST
 
-What it does: makes 500 fake students, cleans them, compares two models
-and shows the result in a small Streamlit dashboard.
-Run it with:  streamlit run app.py
+What it does:
+- Generates 500 synthetic student records (privacy-safe).
+- Cleans missing data inside a pipeline to avoid leakage.
+- Compares Logistic Regression vs Random Forest using 5-fold CV.
+- Deploys a dark-mode Streamlit dashboard for risk prediction and EDA.
 """
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
+# --- Windows crash fix: force non-GUI backend for matplotlib ---
 import matplotlib
-matplotlib.use("Agg")  # draw plots in memory, avoids crashes on Windows
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -22,9 +27,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import (f1_score, recall_score, precision_score,
-                             accuracy_score, confusion_matrix, make_scorer)
+from sklearn.metrics import (
+    f1_score, recall_score, precision_score, accuracy_score,
+    confusion_matrix, make_scorer
+)
 
+# --- Style ---
 plt.style.use("dark_background")
 BG = "#0e1117"
 
@@ -33,11 +41,9 @@ st.set_page_config(page_title="Student Risk Predictor", page_icon="🎓", layout
 
 @st.cache_data
 def make_data():
-    """Build the fake student data. Some values are left empty on purpose,
-    the pipeline fills them later so the test set stays untouched."""
+    """Build the fake student data. Some values are left empty on purpose."""
     np.random.seed(42)
     n = 500
-
     study = np.clip(np.random.normal(12, 5, n), 0, 40)
     attend = np.clip(np.random.normal(78, 12, n), 40, 100)
     gpa = np.clip(np.random.normal(2.8, 0.6, n), 0, 4.0)
@@ -45,11 +51,15 @@ def make_data():
     sleep = np.clip(np.random.normal(6.5, 1.3, n), 3, 10)
     extra = np.random.choice([0, 1], n, p=[0.6, 0.4])
 
-    # a student passes if this weighted score is high enough (plus some luck)
-    score = (0.20 * study / 40 + 0.25 * attend / 100 + 0.30 * gpa / 4 +
-             0.15 * tasks / 10 + 0.10 * sleep / 10 + 0.05 * extra +
-             np.random.normal(0, 0.06, n))
-
+    score = (
+        0.20 * study / 40 +
+        0.25 * attend / 100 +
+        0.30 * gpa / 4 +
+        0.15 * tasks / 10 +
+        0.10 * sleep / 10 +
+        0.05 * extra +
+        np.random.normal(0, 0.06, n)
+    )
     df = pd.DataFrame({
         "study_hours_per_week": study.round(1),
         "attendance_percent": attend.round(1),
@@ -60,7 +70,6 @@ def make_data():
         "passed": (score > 0.55).astype(int),
     })
 
-    # blank out 3% of two columns, real data is never perfect
     for col in ["attendance_percent", "sleep_hours"]:
         rows = np.random.choice(df.index, size=int(n * 0.03), replace=False)
         df.loc[rows, col] = np.nan
@@ -69,26 +78,32 @@ def make_data():
 
 @st.cache_resource
 def train(_df):
-    """Compare both models with cross-validation (training data only),
-    then test the winner once. We care about at-risk students (passed = 0)."""
+    """Compare both models with cross-validation, then test the winner."""
     X, y = _df.drop(columns=["passed"]), _df["passed"]
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y)
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
 
     fill = ("fill", SimpleImputer(strategy="median"))
     models = {
-        "Logistic Regression": Pipeline([fill, ("scale", StandardScaler()),
-            ("model", LogisticRegression(max_iter=1000, class_weight="balanced"))]),
-        "Random Forest": Pipeline([fill,
-            ("model", RandomForestClassifier(n_estimators=200, class_weight="balanced",
-                                             random_state=42))]),
+        "Logistic Regression": Pipeline([
+            fill,
+            ("scale", StandardScaler()),
+            ("model", LogisticRegression(max_iter=1000, class_weight="balanced"))
+        ]),
+        "Random Forest": Pipeline([
+            fill,
+            ("model", RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42))
+        ]),
     }
 
     risk_f1 = make_scorer(f1_score, pos_label=0, zero_division=0)
     folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv = {name: cross_val_score(m, X_train, y_train, cv=folds, scoring=risk_f1).mean()
-          for name, m in models.items()}
 
+    cv = {
+        name: cross_val_score(m, X_train, y_train, cv=folds, scoring=risk_f1).mean()
+        for name, m in models.items()
+    }
     winner = max(cv, key=cv.get)
     best = models[winner].fit(X_train, y_train)
     pred = best.predict(X_test)
@@ -128,8 +143,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🎓 Student Academic Risk Predictor")
-st.caption(f"By Aun Haider Niazi  ·  Data Science Lab, FUSST  ·  "
-           f"Model: {info['winner']}  ·  Synthetic data (500 students)")
+st.caption(
+    f"By Aun Haider Niazi · Data Science Lab, FUSST · "
+    f"Model: {info['winner']} · Synthetic data (500 students)"
+)
 
 tab1, tab2 = st.tabs(["🎯 Risk Predictor", "📊 EDA & Model Data"])
 
@@ -156,34 +173,41 @@ with tab1:
         }])[info["columns"]]
 
         result = model.predict(student)[0]
-        chance = model.predict_proba(student)[0]  # [at risk, pass]
+        chance = model.predict_proba(student)[0]
 
         st.divider()
         if result == 1:
-            st.success(f"✅ **Likely to pass**  ·  Confidence: {chance[1]:.1%}")
+            st.success(f"✅ **Likely to pass** · Confidence: {chance[1]:.1%}")
         else:
-            st.error(f"⚠️ **At risk of failing**  ·  Risk: {chance[0]:.1%}")
+            st.error(f"⚠️ **At risk of failing** · Risk: {chance[0]:.1%}")
             st.info("Suggestion: book a meeting with a faculty advisor and arrange tutoring.")
 
 with tab2:
     st.subheader("How well does the model do? (at-risk students)")
-    st.write(f"**Cross-validation F1:** Logistic Regression = `{info['cv']['Logistic Regression']}` "
-             f"| Random Forest = `{info['cv']['Random Forest']}`  →  winner: **{info['winner']}**")
+    st.write(
+        f"**Cross-validation F1:** Logistic Regression = `{info['cv']['Logistic Regression']}` "
+        f"| Random Forest = `{info['cv']['Random Forest']}` → winner: **{info['winner']}**"
+    )
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("F1", info["f1"])
     c2.metric("Recall", info["recall"])
     c3.metric("Precision", info["precision"])
     c4.metric("Accuracy", info["accuracy"])
-    st.caption(f"Tested on {info['test_size']} students the model never saw. "
-               "Recall = how many truly at-risk students it catches.")
+    st.caption(
+        f"Tested on {info['test_size']} students the model never saw. "
+        "Recall = how many truly at-risk students it catches."
+    )
 
     a, b, c = st.columns(3)
     with a:
         fig, ax = new_plot()
-        sns.heatmap(info["matrix"], annot=True, fmt="d", cmap="Blues", cbar=False,
-                    xticklabels=["Pred at-risk", "Pred pass"],
-                    yticklabels=["Real at-risk", "Real pass"], ax=ax)
+        sns.heatmap(
+            info["matrix"], annot=True, fmt="d", cmap="Blues", cbar=False,
+            xticklabels=["Pred at-risk", "Pred pass"],
+            yticklabels=["Real at-risk", "Real pass"],
+            ax=ax
+        )
         ax.set_title("Confusion Matrix")
         st.pyplot(fig)
     with b:
@@ -193,13 +217,15 @@ with tab2:
         st.pyplot(fig)
     with c:
         fig, ax = new_plot()
-        sns.boxplot(data=df, x="passed", y="previous_gpa", hue="passed",
-                    palette="Set2", legend=False, ax=ax)
+        sns.boxplot(data=df, x="passed", y="previous_gpa", hue="passed", palette="Set2", legend=False, ax=ax)
         ax.set_title("Previous GPA vs Pass/Fail")
         ax.set_xlabel("Passed (0 = fail, 1 = pass)")
         st.pyplot(fig)
 
-    plt.close("all")  # free memory after each rerun
+    plt.close("all")
 
-st.markdown('<div class="footer">Built by <b>Aun Haider Niazi</b><br>'
-            'Introduction to Data Science Lab - FUSST</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="footer">Built by <b>Aun Haider Niazi</b><br>'
+    'Introduction to Data Science Lab - FUSST</div>',
+    unsafe_allow_html=True
+)
